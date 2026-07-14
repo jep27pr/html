@@ -194,7 +194,7 @@
   </div>
 </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script>
 (function () {
   const video = document.getElementById('video');
@@ -225,6 +225,10 @@
   }
 
   async function startCamera() {
+    if (typeof jsQR !== 'function') {
+      showError('La libreria jsQR non si è caricata (blocco rete/adblock/CSP di GitHub Pages?). Controlla la console del browser per l\'errore di rete sullo script esterno.');
+      return;
+    }
     if (!window.isSecureContext) {
       showError('La pagina non è in un contesto sicuro (serve HTTPS). URL attuale: ' + location.protocol + '//' + location.host);
       return;
