@@ -1,161 +1,284 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Scanner QR</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Scanner QR</title>
+<style>
+  :root{
+    --bg: #0b0e0c;
+    --panel: #12211a;
+    --accent: #5ee6a0;
+    --accent-dim: #2e6b4f;
+    --text: #eaf5ee;
+    --text-dim: #8fa89b;
+    --mono: "SF Mono", "Roboto Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0; height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    overflow: hidden;
+  }
+  #stage {
+    position: fixed; inset: 0;
+    display: flex; flex-direction: column;
+  }
+  #camera-wrap {
+    position: relative;
+    flex: 1;
+    background: #000;
+    overflow: hidden;
+  }
+  video {
+    position: absolute; inset: 0;
+    width: 100%; height: 100%;
+    object-fit: cover;
+  }
+  canvas { display: none; }
 
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            background: #f5f5f5;
-            text-align: center;
-            margin: 0;
-            padding: 20px;
-        }
+  /* Reticolo di scansione */
+  #reticle {
+    position: absolute;
+    top: 50%; left: 50%;
+    width: min(62vw, 320px);
+    height: min(62vw, 320px);
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+  }
+  #reticle .corner {
+    position: absolute;
+    width: 28px; height: 28px;
+    border: 3px solid var(--accent);
+    opacity: 0.85;
+    transition: border-color 0.2s ease, opacity 0.2s ease;
+  }
+  #reticle.hit .corner { border-color: #fff; }
+  .tl { top:0; left:0; border-right:none; border-bottom:none; border-radius: 6px 0 0 0;}
+  .tr { top:0; right:0; border-left:none; border-bottom:none; border-radius: 0 6px 0 0;}
+  .bl { bottom:0; left:0; border-right:none; border-top:none; border-radius: 0 0 0 6px;}
+  .br { bottom:0; right:0; border-left:none; border-top:none; border-radius: 0 0 6px 0;}
 
-        h1 {
-            margin-bottom: 20px;
-        }
+  #scan-line {
+    position: absolute;
+    left: 6%; right: 6%;
+    top: 8%;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, var(--accent), transparent);
+    opacity: 0.9;
+    animation: sweep 2.4s ease-in-out infinite;
+  }
+  @keyframes sweep {
+    0%   { top: 8%; }
+    50%  { top: 92%; }
+    100% { top: 8%; }
+  }
 
-        #reader {
-            width: 100%;
-            max-width: 500px;
-            margin: auto;
-        }
+  #status-pill {
+    position: absolute;
+    top: max(16px, env(safe-area-inset-top));
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(10, 15, 12, 0.6);
+    backdrop-filter: blur(6px);
+    border: 1px solid rgba(94, 230, 160, 0.25);
+    padding: 6px 14px;
+    border-radius: 999px;
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    display: flex; align-items: center; gap: 8px;
+  }
+  #status-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--text-dim);
+    transition: background 0.2s ease, box-shadow 0.2s ease;
+  }
+  #status-dot.live {
+    background: var(--accent);
+    box-shadow: 0 0 8px var(--accent);
+  }
+  #status-dot.found {
+    background: #fff;
+    box-shadow: 0 0 10px #fff;
+  }
 
-        .result {
-            background: white;
-            padding: 15px;
-            margin-top: 20px;
-            border-radius: 10px;
-            box-shadow: 0 0 6px rgba(0,0,0,0.15);
-        }
-
-        #output {
-            margin-top: 10px;
-            font-size: 18px;
-            color: green;
-            word-break: break-word;
-        }
-
-        .history {
-            margin-top: 20px;
-            max-width: 500px;
-            margin-left: auto;
-            margin-right: auto;
-            text-align: left;
-        }
-
-        .history ul {
-            background: white;
-            border-radius: 10px;
-            padding: 15px 30px;
-            box-shadow: 0 0 6px rgba(0,0,0,0.15);
-        }
-
-        .history li {
-            margin-bottom: 8px;
-            word-break: break-word;
-        }
-    </style>
+  #result-panel {
+    background: var(--panel);
+    border-top: 1px solid rgba(94, 230, 160, 0.15);
+    padding: 16px 18px calc(16px + env(safe-area-inset-bottom));
+    min-height: 84px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    user-select: text;
+  }
+  #result-label {
+    font-family: var(--mono);
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    color: var(--accent-dim);
+    display: flex;
+    justify-content: space-between;
+  }
+  #result-timestamp { color: var(--text-dim); }
+  #result-value {
+    font-family: var(--mono);
+    font-size: 15px;
+    line-height: 1.5;
+    color: var(--text);
+    word-break: break-all;
+    white-space: pre-wrap;
+    max-height: 5.4em;
+    overflow-y: auto;
+  }
+  #result-value.empty {
+    color: var(--text-dim);
+    font-style: italic;
+  }
+  #error-banner {
+    position: absolute;
+    inset: 0;
+    background: rgba(11, 14, 12, 0.96);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    padding: 32px;
+    text-align: center;
+    font-family: var(--mono);
+    font-size: 14px;
+    color: var(--text-dim);
+    line-height: 1.6;
+  }
+  #error-banner.show { display: flex; }
+</style>
 </head>
 <body>
+<div id="stage">
+  <div id="camera-wrap">
+    <video id="video" playsinline muted autoplay></video>
+    <canvas id="canvas"></canvas>
 
-    <h1>Scanner QR Real-Time</h1>
-
-    <div id="reader"></div>
-
-    <div class="result">
-        <strong>Ultimo QR trovato:</strong>
-        <div id="output">Nessun QR rilevato</div>
+    <div id="status-pill">
+      <span id="status-dot"></span>
+      <span id="status-text">avvio fotocamera…</span>
     </div>
 
-    <div class="history">
-        <h3>Storico</h3>
-        <ul id="history"></ul>
+    <div id="reticle">
+      <div class="corner tl"></div>
+      <div class="corner tr"></div>
+      <div class="corner bl"></div>
+      <div class="corner br"></div>
+      <div id="scan-line"></div>
     </div>
 
-    5-qrcode"></script>
+    <div id="error-banner">
+      <div>
+        Impossibile accedere alla fotocamera.<br>
+        Verifica di aver concesso il permesso e di essere su una pagina servita in HTTPS.
+      </div>
+    </div>
+  </div>
 
-    <script>
+  <div id="result-panel">
+    <div id="result-label">
+      <span>Ultimo risultato</span>
+      <span id="result-timestamp">—</span>
+    </div>
+    <div id="result-value" class="empty">In attesa di un QR code…</div>
+  </div>
+</div>
 
-        let ultimoCodice = "";
-        let ultimoTimestamp = 0;
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsqr/1.4.0/jsQR.js"></script>
+<script>
+(function () {
+  const video = document.getElementById('video');
+  const canvas = document.getElementById('canvas');
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const statusDot = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+  const reticle = document.getElementById('reticle');
+  const resultValue = document.getElementById('result-value');
+  const resultTimestamp = document.getElementById('result-timestamp');
+  const errorBanner = document.getElementById('error-banner');
 
-        function onScanSuccess(decodedText) {
+  const SCAN_INTERVAL_MS = 1000;
+  let scanning = false;
 
-            const adesso = Date.now();
+  function setStatus(state, text) {
+    statusText.textContent = text;
+    statusDot.className = state ? state : '';
+  }
 
-            if (
-                decodedText === ultimoCodice &&
-                (adesso - ultimoTimestamp) < 2000
-            ) {
-                return;
-            }
+  function formatTime(d) {
+    return d.toLocaleTimeString('it-IT', { hour12: false });
+  }
 
-            ultimoCodice = decodedText;
-            ultimoTimestamp = adesso;
+  async function startCamera() {
+    try {
+      setStatus('', 'richiesta permesso fotocamera…');
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: 'environment' } },
+        audio: false
+      });
+      video.srcObject = stream;
+      await video.play();
+      setStatus('live', 'scansione attiva');
+      scanning = true;
+      scheduleScan();
+    } catch (err) {
+      console.error(err);
+      errorBanner.classList.add('show');
+      setStatus('', 'fotocamera non disponibile');
+    }
+  }
 
-            document.getElementById("output").textContent = decodedText;
+  function scheduleScan() {
+    if (!scanning) return;
+    scanFrame();
+    setTimeout(scheduleScan, SCAN_INTERVAL_MS);
+  }
 
-            const li = document.createElement("li");
-            li.textContent =
-                new Date().toLocaleTimeString() +
-                " - " +
-                decodedText;
+  function scanFrame() {
+    if (video.readyState !== video.HAVE_ENOUGH_DATA) return;
 
-            document
-                .getElementById("history")
-                .prepend(li);
-        }
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
 
-        async function avviaScanner() {
+    let imageData;
+    try {
+      imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    } catch (e) {
+      return;
+    }
 
-            try {
+    const code = jsQR(imageData.data, imageData.width, imageData.height, {
+      inversionAttempts: 'dontInvert'
+    });
 
-                const devices = await Html5Qrcode.getCameras();
+    if (code && code.data) {
+      handleResult(code.data);
+    } else {
+      reticle.classList.remove('hit');
+      statusDot.className = 'live';
+    }
+  }
 
-                if (!devices.length) {
-                    document.getElementById("output").textContent =
-                        "Nessuna fotocamera trovata";
-                    return;
-                }
+  function handleResult(data) {
+    reticle.classList.add('hit');
+    statusDot.className = 'found';
+    resultValue.textContent = data;
+    resultValue.classList.remove('empty');
+    resultTimestamp.textContent = formatTime(new Date());
+  }
 
-                let cameraId = devices[0].id;
-
-                const posteriore = devices.find(device =>
-                    device.label.toLowerCase().includes("back") ||
-                    device.label.toLowerCase().includes("rear")
-                );
-
-                if (posteriore) {
-                    cameraId = posteriore.id;
-                }
-
-                const html5QrCode = new Html5Qrcode("reader");
-
-                await html5QrCode.start(
-                    cameraId,
-                    {
-                        fps: 1,
-                        qrbox: 250
-                    },
-                    onScanSuccess
-                );
-
-            } catch (errore) {
-
-                document.getElementById("output").textContent =
-                    "Errore: " + errore;
-
-                console.error(errore);
-            }
-        }
-
-        avviaScanner();
-
-    </script>
-
+  startCamera();
+})();
+</script>
 </body>
 </html>
