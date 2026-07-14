@@ -1,115 +1,161 @@
 <!DOCTYPE html>
 <html lang="it">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Scanner QR</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scanner QR</title>
 
-<style>
-body{
-    font-family: Arial, sans-serif;
-    margin:0;
-    padding:20px;
-    background:#f5f5f5;
-    text-align:center;
-}
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            text-align: center;
+            margin: 0;
+            padding: 20px;
+        }
 
-h1{
-    margin-bottom:15px;
-}
+        h1 {
+            margin-bottom: 20px;
+        }
 
-#reader{
-    width:100%;
-    max-width:500px;
-    margin:auto;
-}
+        #reader {
+            width: 100%;
+            max-width: 500px;
+            margin: auto;
+        }
 
-.result{
-    margin-top:20px;
-    padding:15px;
-    background:white;
-    border-radius:10px;
-    word-break:break-word;
-    box-shadow:0 2px 5px rgba(0,0,0,.1);
-}
+        .result {
+            background: white;
+            padding: 15px;
+            margin-top: 20px;
+            border-radius: 10px;
+            box-shadow: 0 0 6px rgba(0,0,0,0.15);
+        }
 
-.history{
-    margin-top:20px;
-    text-align:left;
-    max-width:500px;
-    margin-left:auto;
-    margin-right:auto;
-}
+        #output {
+            margin-top: 10px;
+            font-size: 18px;
+            color: green;
+            word-break: break-word;
+        }
 
-.history ul{
-    background:white;
-    border-radius:10px;
-    padding:10px 20px;
-}
-</style>
+        .history {
+            margin-top: 20px;
+            max-width: 500px;
+            margin-left: auto;
+            margin-right: auto;
+            text-align: left;
+        }
+
+        .history ul {
+            background: white;
+            border-radius: 10px;
+            padding: 15px 30px;
+            box-shadow: 0 0 6px rgba(0,0,0,0.15);
+        }
+
+        .history li {
+            margin-bottom: 8px;
+            word-break: break-word;
+        }
+    </style>
 </head>
 <body>
 
-<h1>Scanner QR Real-Time</h1>
+    <h1>Scanner QR Real-Time</h1>
 
-<div id="reader"></div>
+    <div id="reader"></div>
 
-<div class="result">
-    <strong>Ultimo QR trovato:</strong>
-    <div id="output">Nessun QR rilevato</div>
-</div>
+    <div class="result">
+        <strong>Ultimo QR trovato:</strong>
+        <div id="output">Nessun QR rilevato</div>
+    </div>
 
-<div class="history">
-    <h3>Storico</h3>
-    <ul id="history"></ul>
-</div>
+    <div class="history">
+        <h3>Storico</h3>
+        <ul id="history"></ul>
+    </div>
 
-https://unpkg.com/html5-qrcode"></script>
+    5-qrcode"></script>
 
-<script>
-let lastRead = "";
-let lastTimestamp = 0;
+    <script>
 
-function onScanSuccess(decodedText) {
+        let ultimoCodice = "";
+        let ultimoTimestamp = 0;
 
-    const now = Date.now();
+        function onScanSuccess(decodedText) {
 
-    // evita duplicati entro 2 secondi
-    if(
-        decodedText === lastRead &&
-        (now - lastTimestamp) < 2000
-    ){
-        return;
-    }
+            const adesso = Date.now();
 
-    lastRead = decodedText;
-    lastTimestamp = now;
+            if (
+                decodedText === ultimoCodice &&
+                (adesso - ultimoTimestamp) < 2000
+            ) {
+                return;
+            }
 
-    document.getElementById("output").textContent = decodedText;
+            ultimoCodice = decodedText;
+            ultimoTimestamp = adesso;
 
-    const li = document.createElement("li");
-    li.textContent =
-        new Date().toLocaleTimeString() +
-        " - " +
-        decodedText;
+            document.getElementById("output").textContent = decodedText;
 
-    document
-        .getElementById("history")
-        .prepend(li);
-}
+            const li = document.createElement("li");
+            li.textContent =
+                new Date().toLocaleTimeString() +
+                " - " +
+                decodedText;
 
-const qrScanner = new Html5Qrcode("reader");
+            document
+                .getElementById("history")
+                .prepend(li);
+        }
 
-Html5Qrcode.getCameras()
-.then(devices => {
+        async function avviaScanner() {
 
-    if (devices && devices.length) {
+            try {
 
-        let cameraId = devices[0].id;
+                const devices = await Html5Qrcode.getCameras();
 
-        // cerca la posteriore
-        const backCamera = devices.find(
-            d =>
-            d.label.toLowerCase().includes("back") ||
-            d.label.toLowerCase().includes("rear")
-        );
+                if (!devices.length) {
+                    document.getElementById("output").textContent =
+                        "Nessuna fotocamera trovata";
+                    return;
+                }
+
+                let cameraId = devices[0].id;
+
+                const posteriore = devices.find(device =>
+                    device.label.toLowerCase().includes("back") ||
+                    device.label.toLowerCase().includes("rear")
+                );
+
+                if (posteriore) {
+                    cameraId = posteriore.id;
+                }
+
+                const html5QrCode = new Html5Qrcode("reader");
+
+                await html5QrCode.start(
+                    cameraId,
+                    {
+                        fps: 1,
+                        qrbox: 250
+                    },
+                    onScanSuccess
+                );
+
+            } catch (errore) {
+
+                document.getElementById("output").textContent =
+                    "Errore: " + errore;
+
+                console.error(errore);
+            }
+        }
+
+        avviaScanner();
+
+    </script>
+
+</body>
+</html>
